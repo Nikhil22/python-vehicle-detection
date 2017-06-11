@@ -1,33 +1,144 @@
-# Vehicle Detection
-[![Udacity - Self-Driving Car NanoDegree](https://s3.amazonaws.com/udacity-sdc/github/shield-carnd.svg)](http://www.udacity.com/drive)
+# **Vehicle Detection**
+
+[//]: # (Image References)
+[image1]: ./examples/car_not_car.png
+[image2]: ./examples/HOG_example.jpg
+[image3]: ./examples/sliding_windows.jpg
+[image4]: ./examples/sliding_window.jpg
+[image5]: ./examples/bboxes_and_heat.png
+[image6]: ./examples/labels_map.png
+[image7]: ./examples/output_bboxes.png
+[video1]: ./project_video.mp4
+[//]: # (Image References)
+
+[one]: ./output_images/one.png 
+[two]: ./output_images/two.png 
+[three]: ./output_images/three.png 
+
+## Final output
+
+![demo](result.gif)
 
 
-In this project, your goal is to write a software pipeline to detect vehicles in a video (start with the test_video.mp4 and later implement on full project_video.mp4), but the main output or product we want you to create is a detailed writeup of the project.  Check out the [writeup template](https://github.com/udacity/CarND-Vehicle-Detection/blob/master/writeup_template.md) for this project and use it as a starting point for creating your own writeup.  
+## Histogram of Oriented Gradients (HOG)
 
-Creating a great writeup:
+Example of vehicle and non vehicle"
+
+![alt text][image1]
+
+I created a function called get_hog_features. After a bit of research, I found that I could use cv2.HOGDescriptor, and provide a feature space to it. For getting the feature space of an image, here's a code snippet
+
+```python
+def get_feature_space(img, cspace):
+    if cspace != 'RGB':
+        if cspace == 'HLS':
+            features = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
+        elif cspace == 'YCrCb':
+            features = cv2.cvtColor(img, cv2.COLOR_RGB2YCrCb)
+        elif cspace == 'HSV':
+            features = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+        elif cspace == 'LUV':
+            features = cv2.cvtColor(img, cv2.COLOR_RGB2LUV)
+        elif cspace == 'YUV':
+            features = cv2.cvtColor(img, cv2.COLOR_RGB2YUV)
+        elif cspace == 'Lab':
+            features = cv2.cvtColor(img, cv2.COLOR_RGB2Lab)
+        return features
+
+def get_hog_features(img, cspace):
+    return np.ravel(
+        cv2.HOGDescriptor((64,64), (16,16), (8,8), (8,8), 9) \
+            .compute(get_feature_space(img, cspace))
+    )
+```
+
+![alt text][two]
+
+### 2. Final choice of HOG parameters.
+
+First, I defined a function extract_features get_hog_features. This function loops through all images, and creates an array of hogs features of each image. This array is then used as the feature array for training.  Here's a code snippet:
+
+```python
+def extract_features(imgs, cspace='RGB', size = (64,64)):
+    features = []
+    for filename in imgs:
+        image = imread(filename)
+        if size != (64,64):
+            image = cv2.resize(image, size)
+        features.append(
+            np.ravel(
+                cv2.HOGDescriptor((64,64), (16,16), (8,8), (8,8), 9) \
+                    .compute(get_feature_space(image, cspace))
+            )
+        )
+    return features
+```
+
+
+Of all color spaces, YUV was the best at detecting vehicles. 
+I normalized and split by data into train and test sets.
+
+### 3. Training a classifier using selected HOG features.
+
+I trained using both an SVM and an MLP. MLP had a higher test accuracy. Here are the results. 
+
+|Classifier|Training Accuracy|Test Accuracy|
+|----------|-----------------|-------------|
+|svm |1.00|.950|
+|mlp |1.00|.9926|
+
+###Sliding Window Search
+
+### 1. Sliding window search, scales, and overlaps. 
+
+I did a bit of research to look for and modify an efficient and accurate sliding window algorithm.
+
+1. get HOGS features for each window
+2. only search for vehicle in the bottom half of image
+3. multiple window scaled, to ensure we detect both closeby and distant images. 
+4. 80% xy overlap, through trial and error
+
+```python
+def slide_window(img, x_start_stop=[None, None], y_start_stop=[None, None], 
+                    xy_window=(64, 64), xy_overlap=(0.75, 0.75)):
+    if x_start_stop[0] == None:
+        x_start_stop[0] = 0
+    if x_start_stop[1] == None:
+        x_start_stop[1] = img.shape[1]
+    if y_start_stop[0] == None:
+        y_start_stop[0] = 0
+    if y_start_stop[1] == None:
+        y_start_stop[1] = img.shape[0]
+    xspan = x_start_stop[1] - x_start_stop[0]
+    yspan = y_start_stop[1] - y_start_stop[0]
+    nx_pix_per_step = np.int(xy_window[0]*(1 - xy_overlap[0]))
+    ny_pix_per_step = np.int(xy_window[1]*(1 - xy_overlap[1]))
+    nx_windows = np.int(xspan/nx_pix_per_step) 
+    ny_windows = np.int(yspan/ny_pix_per_step)
+    window_list = []
+    for ys in range(ny_windows):
+        for xs in range(nx_windows):
+            startx = xs*nx_pix_per_step + x_start_stop[0]
+            endx = (xs+1)*nx_pix_per_step + x_start_stop[0]
+            starty = ys*ny_pix_per_step + y_start_stop[0]
+            endy = (ys+1)*ny_pix_per_step + y_start_stop[0]
+            window_list.append(((startx, starty), (endx, endy)))
+    return window_list
+```
+
+![alt text][one]
+![alt text][three]
 ---
-A great writeup should include the rubric points as well as your description of how you addressed each point.  You should include a detailed description of the code used in each step (with line-number references and code snippets where necessary), and links to other supporting documents or external references.  You should include images in your writeup to demonstrate how your code works with examples.  
 
-All that said, please be concise!  We're not looking for you to write a book here, just a brief description of how you passed each rubric point, and references to the relevant code :). 
+### Video Implementation
 
-You can submit your writeup in markdown or use another method and submit a pdf instead.
+Here's a [link to my video result](./result.mp4)
 
-The Project
----
+The MLP has a method called predict_proba which returns the confidence/probability of each class.
+Only classifications with a score >0.99 where chosen.
 
-The goals / steps of this project are the following:
 
-* Perform a Histogram of Oriented Gradients (HOG) feature extraction on a labeled training set of images and train a classifier Linear SVM classifier
-* Optionally, you can also apply a color transform and append binned color features, as well as histograms of color, to your HOG feature vector. 
-* Note: for those first two steps don't forget to normalize your features and randomize a selection for training and testing.
-* Implement a sliding-window technique and use your trained classifier to search for vehicles in images.
-* Run your pipeline on a video stream (start with the test_video.mp4 and later implement on full project_video.mp4) and create a heat map of recurring detections frame by frame to reject outliers and follow detected vehicles.
-* Estimate a bounding box for vehicles detected.
+### Aftermath
 
-Here are links to the labeled data for [vehicle](https://s3.amazonaws.com/udacity-sdc/Vehicle_Tracking/vehicles.zip) and [non-vehicle](https://s3.amazonaws.com/udacity-sdc/Vehicle_Tracking/non-vehicles.zip) examples to train your classifier.  These example images come from a combination of the [GTI vehicle image database](http://www.gti.ssr.upm.es/data/Vehicle_database.html), the [KITTI vision benchmark suite](http://www.cvlibs.net/datasets/kitti/), and examples extracted from the project video itself.   You are welcome and encouraged to take advantage of the recently released [Udacity labeled dataset](https://github.com/udacity/self-driving-car/tree/master/annotations) to augment your training data.  
+This pipleline may fail when trying to deteced motorcycles or bicycles. To fix this, we would have to append our trainining and test sets with images of classified images of bikes, etc and adjust our feature extraction algorithm.
 
-Some example images for testing your pipeline on single frames are located in the `test_images` folder.  To help the reviewer examine your work, please save examples of the output from each stage of your pipeline in the folder called `ouput_images`, and include them in your writeup for the project by describing what each image shows.    The video called `project_video.mp4` is the video your pipeline should work well on.  
-
-**As an optional challenge** Once you have a working pipeline for vehicle detection, add in your lane-finding algorithm from the last project to do simultaneous lane-finding and vehicle detection!
-
-**If you're feeling ambitious** (also totally optional though), don't stop there!  We encourage you to go out and take video of your own, and show us how you would implement this project on a new video!
